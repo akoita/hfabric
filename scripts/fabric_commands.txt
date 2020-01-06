@@ -1,0 +1,510 @@
+OREDER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+export CHANNEL_NAME=mychannel
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/tlsca/tlsca.org1.example.com-cert.pem
+
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+CORE_PEER_ADDRESS=peer0.org2.example.com:7051 CORE_PEER_LOCALMSPID="Org2MSP" 
+CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+CORE_PEER_TLS_ROOTCERT_FILE_2=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+peer channel join -b mychannel.block
+
+
+peer channel update -o orderer.example.com:7050 -c $CHANNEL_NAME -f ./channel-artifacts/Org1MSPanchors.tx --tls --cafile $OREDER_CA
+
+
+peer chaincode install -n mycc -v 1.0 -l node -p /opt/gopath/src/github.com/chaincode/chaincode_example02/node/
+
+
+peer chaincode instantiate -o orderer.example.com:7050 --tls --cafile $OREDER_CA -C $CHANNEL_NAME -n mycc -l node -v 1.0 -c '{"Args":["init","a", "100", "b","200"]}' -P "AND ('Org1MSP.peer','Org2MSP.peer')"
+
+
+peer chaincode query -C $CHANNEL_NAME -n mycc -c '{"Args":["query","a"]}'
+
+
+peer chaincode invoke -o orderer.example.com:7050 --tls true --cafile $OREDER_CA -C $CHANNEL_NAME -n mycc --peerAddresses peer0.org1.example.com:7051 --tlsRootCertFiles $CORE_PEER_TLS_ROOTCERT_FILE --peerAddresses peer0.org2.example.com:7051 --tlsRootCertFiles $CORE_PEER_TLS_ROOTCERT_FILE_2 -c '{"Args":["invoke","a","b","10"]}'
+
+#############################################
+cd org3-artifacts
+cryptogen generate --config=./org3-crypto.yaml
+
+export FABRIC_CFG_PATH=$PWD && ../../bin/configtxgen -printOrg Org3MSP > ../channel-artifacts/org3.json
+
+cd ../ && cp -r crypto-config/ordererOrganizations org3-artifacts/crypto-config/
+
+
+
+export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+export CHANNEL_NAME=mychannel
+
+
+peer channel fetch config config_block.pb -o orderer.example.com:7050 -c $CHANNEL_NAME --tls --cafile $ORDERER_CA
+
+
+configtxlator proto_decode --input config_block.pb --type common.Block | jq .data.data[0].payload.data.config > config.json
+
+jq -s '.[0] * {"channel_group":{"groups":{"Application":{"groups": {"Org3MSP":.[1]}}}}}' config.json ./channel-artifacts/org3.json > modified_config.json
+
+
+configtxlator proto_encode --input config.json --type common.Config --output config.pb
+
+configtxlator proto_encode --input modified_config.json --type common.Config --output modified_config.pb
+
+
+configtxlator compute_update --channel_id $CHANNEL_NAME --original config.pb --updated modified_config.pb --output org3_update.pb
+
+
+configtxlator proto_decode --input org3_update.pb --type common.ConfigUpdate | jq . > org3_update.json
+
+
+echo '{"payload":{"header":{"channel_header":{"channel_id":"mychannel", "type":2}},"data":{"config_update":'$(cat org3_update.json)'}}}' | jq . > org3_update_in_envelope.json
+
+configtxlator proto_encode --input org3_update_in_envelope.json --type common.Envelope --output org3_update_in_envelope.pb
+
+peer channel signconfigtx -f org3_update_in_envelope.pb
+
+
+peer channel update -f org3_update_in_envelope.pb -c $CHANNEL_NAME -o orderer.example.com:7050 --tls --cafile $ORDERER_CA
+
+
+docker-compose -f docker-compose-org3.yaml up -d
+
+docker exec -it Org3cli bash
+export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+export CHANNEL_NAME=mychannel
+
+peer channel fetch 0 mychannel.block -o orderer.example.com:7050 -c $CHANNEL_NAME --tls --cafile $ORDERER_CA
+
+peer channel join -b mychannel.block
+
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org3.example.com/peers/peer1.org3.example.com/tls/ca.crt
+
+export CORE_PEER_ADDRESS=peer1.org3.example.com:7051
+
+peer channel join -b mychannel.block
+
+peer chaincode install -n mycc -v 2.0 -p github.com/chaincode/chaincode_example02/go/
+
+peer chaincode upgrade -o orderer.example.com:7050 --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n mycc -v 2.0 -c '{"Args":["init","a","90","b","210"]}' -P "OR ('Org1MSP.peer','Org2MSP.peer','Org3MSP.peer')"
+
+
+peer chaincode query -C $CHANNEL_NAME -n mycc -c '{"Args":["query","a"]}'
+
+peer chaincode invoke -o orderer.example.com:7050  --tls $CORE_PEER_TLS_ENABLED --cafile $ORDERER_CA -C $CHANNEL_NAME -n mycc -c '{"Args":["invoke","a","b","10"]}'
+
+peer chaincode query -C $CHANNEL_NAME -n mycc -c '{"Args":["query","a"]}'
+
+##################################################  Upgrading Your Network Components
+
+docker-compose -f docker-compose-org3.yaml down
+
+docker-compose -f docker-compose-cli.yaml down
+
+git fetch origin
+
+git checkout v1.2.0
+
+./byfn.sh generate
+
+./byfn.sh up -t 3000 -i 1.2.0
+
+git checkout  remotes/origin/release-1.3
+
+docker stop orderer.example.com
+
+export LEDGERS_BACKUP=./ledgers-backup
+
+export IMAGE_TAG=$(go env GOARCH)-1.3.0
+
+mkdir -p $LEDGERS_BACKUP
+
+docker cp orderer.example.com:/var/hyperledger/production/orderer/ ./$LEDGERS_BACKUP/orderer.example.com
+
+docker-compose -f docker-compose-cli.yaml up -d --no-deps orderer.example.com
+
+
+# export PEER=peer0.org1.example.com
+# export PEER=peer1.org1.example.com
+# export PEER=peer0.org2.example.com
+export PEER=peer1.org2.example.com
+docker stop $PEER
+docker cp $PEER:/var/hyperledger/production ./$LEDGERS_BACKUP/$PEER
+CC_CONTAINERS=$(docker ps | grep dev-$PEER | awk '{print $1}')
+if [ -n "$CC_CONTAINERS" ] ; then docker rm -f $CC_CONTAINERS ; fi
+CC_IMAGES=$(docker images | grep dev-$PEER | awk '{print $1}')
+if [ -n "$CC_IMAGES" ] ; then docker rmi -f $CC_IMAGES ; fi
+docker-compose -f docker-compose-cli.yaml up -d --no-deps $PEER
+docker-compose -f docker-compose-cli.yaml stop cli
+docker-compose -f docker-compose-cli.yaml up -d --no-deps cli
+
+
+CH_NAME=mychannel
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+ORG1_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+ORG2_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+
+peer chaincode invoke -o orderer.example.com:7050 --peerAddresses peer0.org1.example.com:7051 --tlsRootCertFiles $ORG1_CA --peerAddresses peer0.org2.example.com:7051 --tlsRootCertFiles $ORG2_CA --tls --cafile $ORDERER_CA  -C $CH_NAME -n mycc -c '{"Args":["invoke","a","b","10"]}'
+
+peer chaincode query -C mychannel -n mycc -c '{"Args":["query","a"]}'
+
+
+docker exec -it cli bash 
+
+CORE_PEER_LOCALMSPID="OrdererMSP"
+
+CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/users/Admin@example.com/msp
+
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+CH_NAME=testchainid
+
+peer channel fetch config config_block.pb -o orderer.example.com:7050 -c $CH_NAME --tls --cafile $ORDERER_CA
+
+configtxlator proto_decode --input config_block.pb --type common.Block --output config_block.json
+
+jq .data.data[0].payload.data.config config_block.json > config.json
+
+jq -s '.[0] * {"channel_group":{"values": {"Capabilities": .[1]}}}' config.json ./scripts/capabilities.json > modified_config.json
+
+configtxlator proto_encode --input config.json --type common.Config --output config.pb
+
+configtxlator proto_encode --input modified_config.json --type common.Config --output modified_config.pb
+
+configtxlator compute_update --channel_id $CH_NAME --original config.pb --updated modified_config.pb --output config_update.pb
+
+configtxlator proto_decode --input config_update.pb --type common.ConfigUpdate --output config_update.json
+
+echo '{"payload":{"header":{"channel_header":{"channel_id":"'$CH_NAME'", "type":2}},"data":{"config_update":'$(cat config_update.json)'}}}' | jq . > config_update_in_envelope.json
+
+configtxlator proto_encode --input config_update_in_envelope.json --type common.Envelope --output config_update_in_envelope.pb
+
+peer channel update -f config_update_in_envelope.pb -c $CH_NAME -o orderer.example.com:7050 --tls true --cafile $ORDERER_CA
+
+
+
+export CORE_PEER_LOCALMSPID="Org1MSP"
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
+
+export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+
+export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+export CH_NAME="mychannel"
+
+peer channel fetch config config_block.pb -o orderer.example.com:7050 -c $CH_NAME --tls --cafile $ORDERER_CA
+
+configtxlator proto_decode --input config_block.pb --type common.Block --output config_block.json
+
+jq .data.data[0].payload.data.config config_block.json > config.json
+
+jq -s '.[0] * {"channel_group":{"values": {"Capabilities": .[1]}}}' config.json ./scripts/capabilities.json > modified_config.json
+
+configtxlator proto_encode --input config.json --type common.Config --output config.pb
+
+configtxlator proto_encode --input modified_config.json --type common.Config --output modified_config.pb
+
+configtxlator compute_update --channel_id $CH_NAME --original config.pb --updated modified_config.pb --output config_update.pb
+
+configtxlator proto_decode --input config_update.pb --type common.ConfigUpdate --output config_update.json
+
+echo '{"payload":{"header":{"channel_header":{"channel_id":"'$CH_NAME'", "type":2}},"data":{"config_update":'$(cat config_update.json)'}}}' | jq . > config_update_in_envelope.json
+
+configtxlator proto_encode --input config_update_in_envelope.json --type common.Envelope --output config_update_in_envelope.pb
+
+peer channel signconfigtx -f config_update_in_envelope.pb
+
+
+export CORE_PEER_LOCALMSPID="Org2MSP"
+##################################################################
+ /usr/local/go/bin/go build cmd/...
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+
+export CORE_PEER_ADDRESS=peer0.org2.example.com:7051
+
+export CH_NAME="mychannel"
+
+CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/users/Admin@example.com/msp
+
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+peer channel update -f config_update_in_envelope.pb -c $CH_NAME -o orderer.example.com:7050 --tls true --cafile $ORDERER_CA
+
+
+peer channel fetch config config_block.pb -o orderer.example.com:7050 -c $CH_NAME --tls --cafile $ORDERER_CA
+configtxlator proto_decode --input config_block.pb --type common.Block --output config_block.json
+jq .data.data[0].payload.data.config config_block.json > config.json
+jq -s '.[0] * {"channel_group":{"groups":{"Application":{"values": {"Capabilities": .[1]}}}}}' config.json ./scripts/capabilities.json > modified_config.json
+configtxlator proto_encode --input config.json --type common.Config --output config.pb
+configtxlator proto_encode --input modified_config.json --type common.Config --output modified_config.pb
+configtxlator compute_update --channel_id $CH_NAME --original config.pb --updated modified_config.pb --output config_update.pb
+configtxlator proto_decode --input config_update.pb --type common.ConfigUpdate --output config_update.json
+echo '{"payload":{"header":{"channel_header":{"channel_id":"'$CH_NAME'", "type":2}},"data":{"config_update":'$(cat config_update.json)'}}}' | jq . > config_update_in_envelope.json
+configtxlator proto_encode --input config_update_in_envelope.json --type common.Envelope --output config_update_in_envelope.pb
+peer channel signconfigtx -f config_update_in_envelope.pb
+
+
+export CH_NAME="mychannel"
+
+export CORE_PEER_LOCALMSPID="Org2MSP"
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+
+export CORE_PEER_ADDRESS=peer0.org2.example.com:7051
+
+ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+peer channel update -f config_update_in_envelope.pb -c $CH_NAME -o orderer.example.com:7050 --tls true --cafile $ORDERER_CA
+
+##############################
+
+peer chaincode install -n marblesp -v 1.0 -p github.com/chaincode/marbles02_private/go/
+
+export CORE_PEER_ADDRESS=peer1.org1.example.com:7051
+peer chaincode install -n marblesp -v 1.0 -p github.com/chaincode/marbles02_private/go/
+
+export CORE_PEER_LOCALMSPID=Org2MSP
+export PEER0_ORG2_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+export CORE_PEER_TLS_ROOTCERT_FILE=$PEER0_ORG2_CA
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+
+export CORE_PEER_ADDRESS=peer0.org2.example.com:7051
+peer chaincode install -n marblesp -v 1.0 -p github.com/chaincode/marbles02_private/go/
+
+export CORE_PEER_ADDRESS=peer1.org2.example.com:7051
+peer chaincode install -n marblesp -v 1.0 -p github.com/chaincode/marbles02_private/go/
+
+export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+peer chaincode instantiate -o orderer.example.com:7050 --tls --cafile $ORDERER_CA -C mychannel -n marblesp -v 1.0 -c '{"Args":["init"]}' -P "OR('Org1MSP.member','Org2MSP.member')" --collections-config  $GOPATH/src/github.com/chaincode/marbles02_private/collections_config.json
+
+
+export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+export CORE_PEER_LOCALMSPID=Org1MSP
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
+export PEER0_ORG1_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+
+peer chaincode invoke -o orderer.example.com:7050 --tls --cafile /opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem -C mychannel -n marblesp -c '{"Args":["initMarble","marble1","blue","35","tom","99"]}'
+
+peer chaincode query -C mychannel -n marblesp -c '{"Args":["readMarble","marble1"]}'
+
+peer chaincode query -C mychannel -n marblesp -c '{"Args":["readMarblePrivateDetails","marble1"]}'
+
+
+export CORE_PEER_TLS_ROOTCERT_FILE=/home/vagrant/app/hyperledger/fabric-home/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/tlsca/tlsca.org1.example.com-cert.pem
+export USER_KEY=/home/vagrant/app/hyperledger/fabric-home/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/User1\@org1.example.com/msp/keystore/5d814b3f0a2a9acd13ae542b992d2a2a3081c24b9e75ff616fe6f45935ae824a_sk
+export USER_CERT=/home/vagrant/app/hyperledger/fabric-home/fabric-samples/first-network/crypto-config/peerOrganizations/org1.example.com/users/User1\@org1.example.com/msp/signcerts/User1\@org1.example.com-cert.pem
+
+
+
+export CORE_PEER_TLS_ROOTCERT_FILE=crypto/peerOrganizations/org1.example.com/tlsca/tlsca.org1.example.com-cert.pem
+export USER_KEY=crypto/peerOrganizations/org1.example.com/users/User1\@org1.example.com/msp/keystore/5d814b3f0a2a9acd13ae542b992d2a2a3081c24b9e75ff616fe6f45935ae824a_sk
+export USER_CERT=crypto/peerOrganizations/org1.example.com/users/User1\@org1.example.com/msp/signcerts/User1\@org1.example.com-cert.pem
+
+discover --configFile conf.yaml --peerTLSCA $CORE_PEER_TLS_ROOTCERT_FILE --userKey $USER_KEY  --userCert $USER_CERT  --MSP Org1MSP saveConfig
+
+
+
+discover --configFile conf.yaml peers --channel mychannel  --server peer0.org1.example.com:7051
+
+discover --configFile conf.yaml peers --channel mychannel  --server peer0.org1.example.com:7051  | jq .[0].Identity | sed "s/\\\n/\n/g" | sed "s/\"//g"  | openssl x509 -text -noout
+
+
+
+discover --configFile conf.yaml config --channel mychannel  --server peer0.org1.example.com:7051
+
+discover --configFile conf.yaml config --channel mychannel  --server peer0.org1.example.com:7051 | jq .msps.OrdererMSP.root_certs[0] | sed "s/\"//g" | base64 --decode | openssl x509 -text -noout
+
+
+
+export FABRIC_CA_HOME=$HOME/fabric-ca/server
+mkdir -p $FABRIC_CA_HOME
+
+
+fabric-ca-server init -b admin:adminpw
+fabric-ca-server start -b admin:adminpw
+
+openssl ecparam -name prime256v1 -genkey -noout -out server.key
+openssl req -new -key server.key -out server.csr
+
+openssl x509 -req -in server.csr -out server.crt -CA msp/tls-localhost-7054.pem -CAkey ca.key -CAcreateserial -CAserial ca.srl
+
+
+
+
+#openssl ec -in tlskey.pem -pubout -out tlspublic.pem
+#openssl req -new -sha256 -key tlskey.pem -out tlspublic.csr
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin
+mkdir -p $FABRIC_CA_CLIENT_HOME
+fabric-ca-client enroll -u http://admin:adminpw@localhost:7054 --enrollment.profile tls 
+
+fabric-ca-client enroll -u https://admin:adminpw@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name user2 --id.secret user2 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/user2
+fabric-ca-client enroll -u https://user2:user2@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+fabric-ca-client register -d --id.name user3 --id.secret user3 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/user3
+fabric-ca-client enroll -u https://user3:user3@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name postgres --id.secret postgres --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/postgres
+fabric-ca-client enroll -u https://postgres:postgres@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name user5 --id.secret user5 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+fabric-ca-client register -d --id.name user6 --id.secret user6 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+
+
+
+
+docker run -p 389:389 -p 636:636 --name my-openldap-container --detach osixia/openldap:1.2.4
+
+docker exec my-openldap-container ldapsearch -x -H ldap://localhost -b dc=example,dc=org -D "cn=admin,dc=example,dc=org" -w admin
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin_ldap
+fabric-ca-client enroll -u https://cn=admin,dc=example,dc=org:admin@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin_ca12
+fabric-ca-client enroll -u https://admin:adminpw@ubuntu-xenial:7054 --enrollment.profile tls --caname ca1 --tls.certfiles   /home/vagrant/fabric-ca/client/ca.pem
+
+
+fabric-ca-client register -d --id.name intca5 --id.secret intca5 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem --id.attrs 'hf.IntermediateCA=true:ecert,admin=true:ecert,hf.Revoker=true,hf.GenCRL=true' -u https://admin:adminpw@ubuntu-xenial:7054 --caname ca1
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/server/intca5
+fabric-ca-server start -b intca5:intca5 -u https://admin:adminpw@ubuntu-xenial:7054  --intermediate.parentserver.caname ca1  --intermediate.tls.certfiles /home/vagrant/fabric-ca/client/ca.pem  --intermediate.enrollment.profile tls --port 8054
+
+fabric-ca-client enroll -u https://admin:admin@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin
+fabric-ca-client register -d --id.name admin2 --id.secret admin2 --id.affiliation org1.department1 --id.attrs '"hf.Registrar.Roles=peer,user",hf.Revoker=true' --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin2
+fabric-ca-client enroll -u https://admin2:admin2@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name admin3 --id.secret admin3  --id.type peer --id.affiliation org1.department1 --id.attrs 'customAtt=customValue' --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin2
+
+fabric-ca-client register -d --id.name admin3 --id.secret admin3 --id.affiliation org1.department1 --id.attrs '"hf.Registrar.Roles=peer,user",hf.Revoker=true,hf.Registrar.Attributes=customAtt,customAtt=customValue*' --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin3
+
+fabric-ca-client enroll -u https://admin3:admin3@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name admin4 --id.secret admin4  --id.type peer --id.affiliation org1.department1 --id.attrs 'customAtt=customV8555alue*' --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin4
+fabric-ca-client enroll -u https://admin4:admin4@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin
+
+fabric-ca-client register -d --id.name admin5 --id.secret admin5  --id.affiliation org1.department1 --id.attrs 'hf.Registrar.Roles=peer,customAtt=customV8555alue*' --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin5
+fabric-ca-client enroll -u https://admin5:admin5@ubuntu-xenial:7054 --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client register -d --id.name admin6 --id.secret admin6  --id.type peer  --id.affiliation org1.department1  --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+fabric-ca-client reenroll  --enrollment.profile tls --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin
+fabric-ca-client revoke -e admin5 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+serial=$(openssl x509 -in admin4/msp/signcerts/cert.pem -serial -noout | cut -d "=" -f 2)
+aki=$(openssl x509 -in admin4/msp/signcerts/cert.pem  -text | awk '/keyid/ {gsub(/ *keyid:|:/,"",$1);print tolower($0)}')
+fabric-ca-client revoke -s $serial -a $aki -r affiliationchange --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client revoke -e admin5 --gencrl --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+serial=$(openssl x509 -in admin4/msp/signcerts/cert.pem -serial -noout | cut -d "=" -f 2)
+aki=$(openssl x509 -in admin4/msp/signcerts/cert.pem  -text | awk '/keyid/ {gsub(/ *keyid:|:/,"",$1);print tolower($0)}')
+fabric-ca-client revoke -s $serial -a $aki -r affiliationchange --gencrl --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client gencrl --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+fabric-ca-client gencrl --revokedafter 2017-09-13T16:39:57-08:00 --revokedbefore 2017-09-21T16:39:57-08:00 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+
+
+fabric-ca-client identity list --id admin5 --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+fabric-ca-client identity list --tls.certfiles /home/vagrant/fabric-ca/client/ca.pem
+
+export CA_TLS="--tls.certfiles /home/vagrant/fabric-ca/client/ca.pem"
+
+fabric-ca-client identity add user20 --json '{"secret": "user20", "type": "user", "affiliation": "org1", "max_enrollments": 5, "attrs": [{"name": "hf.Revoker", "value": "true"}]}' $CA_TLS
+
+fabric-ca-client identity add user21 --secret user21 --type user --affiliation . --maxenrollments 1 --attrs hf.Revoker=true $CA_TLS
+
+fabric-ca-client identity modify admin3 --json '{ "affiliation": ".", "attrs": [{"name": "hf.Revoker", "value": "true"}]}' $CA_TLS
+
+
+fabric-ca-client identity modify admin3 --type peer $CA_TLS
+
+fabric-ca-client identity remove admin5 $CA_TLS
+
+fabric-ca-client affiliation add org5.dept1  $CA_TLS
+
+fabric-ca-client affiliation modify org2 --name org6 $CA_TLS
+
+fabric-ca-client certificate list  $CA_TLS
+
+fabric-ca-client certificate list --id admin
+
+fabric-ca-client certificate list --serial 6340855
+
+fabric-ca-client certificate list --serial 6340855 --aki 1234
+
+fabric-ca-client certificate list --id admin --notrevoked --notexpired
+
+fabric-ca-client certificate list --id admin --revocation 2019-06-07T10:00:00z::2019-06-08
+
+fabric-ca-client certificate list  --revocation  2019-06-07T02:00:00Z::2019-06-07T03:30:00Z
+
+fabric-ca-client certificate list --id admin --revocation 2018-01-01::2018-01-30 --notexpired
+
+fabric-ca-client certificate list --id admin --revocation -30d::-15d
+
+fabric-ca-client certificate list --expiration 2018-01-01::2018-01-30 --notrevoked
+
+fabric-ca-client certificate list --expiration -30d::-15d
+
+sudo apt-get install libcppunit-dev
+sudo apt-get install libp11-kit-dev
+ 
+ 
+
+export FABRIC_CA_SERVER_BCCSP_DEFAULT=PKCS11
+export FABRIC_CA_SERVER_BCCSP_PKCS11_LIBRARY=/usr/local/lib/softhsm/libsofthsm2.so
+export FABRIC_CA_SERVER_BCCSP_PKCS11_PIN=98765432
+export FABRIC_CA_SERVER_BCCSP_PKCS11_LABEL=ForFabric
+
+
+

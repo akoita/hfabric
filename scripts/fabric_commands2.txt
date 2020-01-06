@@ -1,0 +1,98 @@
+export FABRIC_CA_CLIENT_HOME=$HOME/fabric-ca/client/admin
+
+fabric-ca-client register -d --id.name account1 --id.secret account1 --id.attrs 'hf.IntermediateCA=true:ecert,admin=true:ecert,hf.Revoker=true,hf.GenCRL=true,custAtt1=val1:ecert,custAtt2=val2:ecert,custAtt3=val3:ecert' -u https://admin:admin@ubuntu-xenial:7054  --caname ca1 --tls.certfiles /home/vagrant/fabric-ca/client/admin/msp/tlscacerts/tls-ubuntu-xenial-7054.pem
+
+fabric-ca-client register -d --id.name account2 --id.secret account2 --id.attrs 'hf.IntermediateCA=true:ecert,admin=true:ecert,hf.Revoker=true,hf.GenCRL=true,custAtt1=val1:ecert,custAtt2=val2:ecert,custAtt3=val3:ecert' -u https://admin:admin@ubuntu-xenial:7054  --caname ca1 --tls.certfiles /home/vagrant/fabric-ca/client/admin/msp/tlscacerts/tls-ubuntu-xenial-7054.pem
+
+
+
+
+fabric-ca-client enroll -u http://admin:adminpw@localhost:7054 --enrollment.profile tls --caname ca1 --tls.certfiles 
+
+
+fabric-ca-client enroll -u https://admin:admin@ubuntu-xenial:7054 --enrollment.profile tls --caname ca1 --tls.certfiles /home/vagrant/fabric-ca/client/admin/msp/tlscacerts/tls-ubuntu-xenial-
+7054.pem
+
+
+fabric-ca-client identity list --id postgres  -u https://admin:admin@ubuntu-xenial:
+
+git clone https://github.com/statsd/statsd.git
+
+node stats.js exampleConfig.js
+
+
+########################################
+
+git checkout v1.0.2
+
+./byfn.sh generate
+
+./byfn.sh up -t 3000 -i 1.2.0
+
+git ehckout -b release-1.3  remotes/origin/release-1.3
+
+git checkout -b release-1.3  remotes/origin/release-1.3
+
+docker stop orderer.example.com
+export LEDGERS_BACKUP=./ledgers-backup
+export IMAGE_TAG=$(go env GOARCH)-1.3.0
+mkdir -p $LEDGERS_BACKUP
+docker cp orderer.example.com:/var/hyperledger/production/orderer/ ./$LEDGERS_BACKUP/orderer.example.com
+docker-compose -f docker-compose-cli.yaml up -d --no-deps orderer.example.com
+
+
+export PEER1=peer1.org1.example.com
+export PEER2=peer0.org2.example.com
+export PEER3=peer1.org2.example.com
+for PEER in $PEER1 $PEER2 $PEER3
+do 
+docker stop $PEER
+docker cp $PEER:/var/hyperledger/production ./$LEDGERS_BACKUP/$PEER
+CC_CONTAINERS=$(docker ps | grep dev-$PEER | awk '{print $1}')
+if [ -n "$CC_CONTAINERS" ] ; then docker rm -f $CC_CONTAINERS ; fi
+docker-compose -f docker-compose-cli.yaml up -d --no-deps $PEER
+done
+
+docker-compose -f docker-compose-cli.yaml stop cli
+docker-compose -f docker-compose-cli.yaml up -d --no-deps cli
+
+
+
+
+
+CORE_PEER_LOCALMSPID="OrdererMSP"
+CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/users/Admin@example.com/msp
+
+
+export CORE_PEER_LOCALMSPID="Org1MSP"
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/peers/peer0.org1.example.com/tls/ca.crt
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org1.example.com/users/Admin@org1.example.com/msp
+export CORE_PEER_ADDRESS=peer0.org1.example.com:7051
+export ORDERER_CA=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/ordererOrganizations/example.com/orderers/orderer.example.com/msp/tlscacerts/tlsca.example.com-cert.pem
+
+export CORE_PEER_LOCALMSPID="Org2MSP"
+export CORE_PEER_TLS_ROOTCERT_FILE=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/tls/ca.crt
+export CORE_PEER_MSPCONFIGPATH=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/users/Admin@org2.example.com/msp
+export CORE_PEER_ADDRESS=peer0.org2.example.com:7051
+
+export CH_NAME="mychannel"
+
+peer channel update -f config_update_in_envelope.pb -c $CH_NAME -o orderer.example.com:7050 --tls true --cafile $ORDERER_CA
+
+export KEY=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/msp/keystore/713d65873e71a4bc3f1f5a9fd72ea5b69c02bd8e3688a657e4f7dae23a063c53_sk
+export CERT=/opt/gopath/src/github.com/hyperledger/fabric/peer/crypto/peerOrganizations/org2.example.com/peers/peer0.org2.example.com/msp/signcerts/peer0.org2.example.com-cert.pem
+
+discover --configFile conf.yaml --peerTLSCA  $CORE_PEER_TLS_ROOTCERT_FILE --userKey $KEY --userCert $CERT  --MSP Org2MSP saveConfig
+
+
+discover --configFile conf.yaml peers --channel mychannel  --server peer0.org2.example.com:7051
+
+
+discover --configFile conf.yaml config --channel mychannel  --server peer0.org2.example.com:7051
+
+discover --configFile conf.yaml endorsers --channel mychannel  --server peer0.org2.example.com:7051 --chaincode mycc
+
+
+export FABRIC_CA_SERVER_HOME=$HOME/fabric_ca_server
+

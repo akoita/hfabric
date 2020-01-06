@@ -1,0 +1,10 @@
+SystemD
+
+sudo cp fabric_ca_service.sh /etc/systemd/system/
+
+sudo chmod 644 /etc/systemd/system/fabric_ca_service.service
+
+sudo systemctl restart fabric_ca_service
+
+
+sudo systemctl status fabric_ca_service.service

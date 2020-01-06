@@ -1,0 +1,9 @@
+[Unit]
+Description=Fabric CA service 
+
+[Service]
+Type=simple
+ExecStart=/bin/bash /home/vagrant/fabric-ca/server/fabric_ca_service.sh
+
+[Install]
+WantedBy=multi-user.target

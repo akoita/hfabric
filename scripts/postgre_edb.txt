@@ -1,0 +1,116 @@
+sudo add-apt-repository ppa:openjdk-r/ppa
+sudo apt-get update
+sudo apt-get install openjdk-8-jdk
+
+
+doc: https://askubuntu.com/questions/94060/run-adduser-non-interactively
+
+https://www.cyberciti.biz/tips/howto-write-shell-script-to-add-user.html
+
+sudo useradd -m -p <encryptedPassword> -s /bin/bash <user>
+
+#Generating a hashed password:
+password="postgres"
+pass=$(perl -e 'print crypt($ARGV[0], "password")' $password)
+echo $pass
+# paYAHIZz4VZyc
+
+sudo useradd -m -p paYAHIZz4VZyc -s /bin/bash enterprisedb
+
+sudo apt-get install selinux-utils
+sudo setenforce permissive
+sudo ./edb-as10-server-10.8.16-1-linux-x64.run
+
+----------------------------------------------------------------------------
+Please provide a password for the database superuser (enterprisedb). A locked
+Unix user account (enterprisedb) will be created if not present.
+admin
+
+PORT: 5444
+
+
+export PATH=$PATH:/opt/edb/as10/bin/
+export PGDATA=/opt/edb/as10/data/
+export PGPORT=5444
+export PGUSER=enterprisedb
+
+PGDATABASE= defzult database 
+
+
+
+sudo mkdir /edbstore
+
+sudo chown enterprisedb:enterprisedb /edbstore
+
+initdb -D /edbstore --wal-segsize 1024 -W
+--default user=linux current account  user = enterprisedb
+--password=postgres
+Database creation message:
+WARNING: enabling "trust" authentication for local connections
+You can change this by editing pg_hba.conf or using the option -A, or
+--auth-local and --auth-host, the next time you run initdb.
+
+Success. You can now start the database server using:
+
+    pg_ctl -D /edbstore -l logfile start
+	
+Change in /edbstore/postgresql.conf PORT = 5434
+
+Start the cluster:
+pg_ctl -D /edbstore -lstartlog5434 start	
+
+Connect to a database cluster
+edb-psql -p 5434 -d edb
+show data_directory
+\q to quit
+
+
+pg_ctl reload -D <location> 
+
+pg_ctl stop -D <locationW
+
+pg_controldata
+
+ALTER_SYSTEM SET 
+
+show work_mem;
+
+select name, setting from pg_settings;
+
+select name, setting from pg_file_settings;
+
+
+Change parameters: 
+/opt/edb/as10/data/postgresql.conf
+pg_ctl -D <location> reload
+
+alter system set work_mem=10240; => postgresql.auto.conf // cluster level modification
+
+alter user u1 set work_mem=10240; => postgresql.auto.conf // user level
+
+
+
+edb-psql edb
+#list databases
+\l
+select datname from pg_database;
+#table spaces
+\db
+#users
+\du
+#tables 
+\dt
+#views
+\dv
+#sequences
+\ds
+#schemas
+\dn
+
+# create database
+#1 from CLI
+createdb edbstore
+#2 in psql
+create database fabric OWNER enterprisedb;
+# connect to the database in psql
+\connect fabric
