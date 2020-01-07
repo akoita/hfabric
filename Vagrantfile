@@ -137,8 +137,8 @@ Vagrant.configure("2") do |config|
 	chmod +x /usr/local/bin/docker-compose
 	
 	####################################################### GO(>=1.11.x) ################################################################
-	curl -O https://storage.googleapis.com/golang/go1.11.2.linux-amd64.tar.gz
-	tar -C /usr/local -xzf go1.11.2.linux-amd64.tar.gz
+	curl -O https://dl.google.com/go/go1.13.5.linux-amd64.tar.gz
+	tar -C /usr/local -xzf go1.13.5.linux-amd64.tar.gz
     
 	# Ajouter les binaires de GO au PATH
     echo 'export GOPATH=$HOME/go' >> $HOME/.bashrc
@@ -161,7 +161,7 @@ Vagrant.configure("2") do |config|
 	apt-get install tree --yes
 	
 	############################### clean installation files ################################################
-	rm -rf $HOME/get-docker.sh  $HOME/go1.11.2.linux-amd64.tar.gz
+	rm -rf $HOME/get-docker.sh  $HOME/go1.13.5.linux-amd64.tar.gz
 	
   SHELL
   
@@ -171,21 +171,21 @@ config.vm.provision "shell", privileged: false, inline: <<-SHELL
 	export HOME="/home/vagrant"	
 	export FABRIC_HOME="$HOME/app/hyperledger/fabric-home"
 	mkdir -p $FABRIC_HOME && cd $FABRIC_HOME
-    curl -sSL http://bit.ly/2ysbOFE | sudo bash -s 1.3.0 1.3.0
+    curl -sSL http://bit.ly/2ysbOFE | bash -s -- 1.4.4 1.4.4 0.4.18
 	echo 'export FABRIC_HOME=$HOME/app/hyperledger/fabric-home' >> $HOME/.bashrc	
 	echo 'export PATH=${PATH}:${FABRIC_HOME}/fabric-samples/bin' >> $HOME/.bashrc
 	export HOME="/home/vagrant"
 	cd $HOME	
-    ###################### NVM and Node.js(=8.x)  #################################
+    ###################### NVM and Node.js(10.15.3)  #################################
 	export NVM_DIR=$HOME/.nvm
 	export PROFILE=$HOME/.bashrc
 	mkdir $NVM_DIR
-    curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.34.0/install.sh | bash
+    curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.35.2/install.sh | bash
     export NVM_DIR="$HOME/.nvm"
      [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
      [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
-    nvm install 8.9.1
-	nvm use 8.9.1
+    nvm install 10.15.3
+	nvm use 10.15.3
 	#g++: utilisé dans les applications Node.js
     sudo apt-get install g++ --yes	
 	###################### Fabric CA ###########################################
@@ -194,7 +194,7 @@ config.vm.provision "shell", privileged: false, inline: <<-SHELL
 	# The following installs both the fabric-ca-server and fabric-ca-client binaries in $GOPATH/bin.
     go get -d github.com/hyperledger/fabric-ca/...
 	cd $GOPATH/src/github.com/hyperledger/fabric-ca
-	git checkout release-1.3
+	git checkout release-1.4
     go install github.com/hyperledger/fabric-ca/cmd/...	
     ############################################  Java 8
     sudo add-apt-repository ppa:openjdk-r/ppa
