@@ -20,7 +20,7 @@ Vagrant.configure("2") do |config|
   config.vm.box_url = "https://app.vagrantup.com/ubuntu/boxes/xenial64"
   
   # share a directory on the host OS with Vagrant machine: C:\dev\hyperledger
-  config.vm.synced_folder "../..", "/home/vagrant/dev"  
+  config.vm.synced_folder ".", "/home/vagrant/dev"
   
   config.disksize.size = '30GB'
 
